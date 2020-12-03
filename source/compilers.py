@@ -63,6 +63,8 @@ class FCompiler:
         # --- machine name.
         while 1:
             if self.machine in ['linux', 'linux2', 'linux3']:
+                if self.nersc_gfortran() is not None:
+                    break
                 if self.linux_intel() is not None:
                     break
                 if self.linux_g95() is not None:
@@ -205,7 +207,7 @@ class FCompiler:
         # --- Get the full name of the compiler executable.
         fcomp = os.path.join(self.findfile(fcompexec, followlinks=0), fcompexec)
         # --- Map the compiler name to the library needed.
-        flib = {'gfortran': 'gfortran', 'g95': 'f95'}[fcompname]
+        flib = {'ftn': 'ftn','gfortran': 'gfortran', 'g95': 'f95'}[fcompname]
         # --- Run it with the appropriate option to return the library path name
         ff = os.popen(fcomp + ' -print-file-name=lib' + flib + '.a')
         gcclib = ff.readline()[:-1]
@@ -294,6 +296,8 @@ class FCompiler:
             if self.omp:
                 self.fopt += ' -qopenmp'
             return 1
+        
+        
 
     def linux_g95(self):
         if self.usecompiler('g95', 'g95'):
@@ -365,6 +369,43 @@ class FCompiler:
             if self.omp:
                 self.fopt += ' -fopenmp'
             return 1
+        
+    def nersc_gfortran(self):
+        if self.usecompiler('nersc', 'ftn'):
+            if not self.isgfortranversionok(self.fcompexec):
+                return None
+            self.fcompname = 'ftn'
+            self.f90free += ' -fPIC'
+            self.f90fixed += ' -fPIC -ffixed-line-length-132'
+            self.f90free += ' -DFPSIZE=%s' % (realsize)
+            self.f90fixed += ' -DFPSIZE=%s' % (realsize)
+            if realsize == '8':
+                self.f90free += ' -fdefault-real-8 -fdefault-double-8'
+                self.f90fixed += ' -fdefault-real-8 -fdefault-double-8'
+            self.f90free += ' -DISZ=%s' % (intsize)
+            self.f90fixed += ' -DISZ=%s' % (intsize)
+            if intsize == '8':
+                self.f90free += ' -fdefault-integer-8'
+                self.f90fixed += ' -fdefault-integer-8'
+            if self.implicitnone:
+                self.f90free += ' -fimplicit-none'
+                self.f90fixed += ' -fimplicit-none'
+            if self.twounderscores:
+                self.f90free += ' -fsecond-underscore'
+                self.f90fixed += ' -fsecond-underscore'
+            else:
+                self.f90free += ' -fno-second-underscore'
+                self.f90fixed += ' -fno-second-underscore'
+            self.libdirs = self.findgnulibdirs(self.fcompname, self.fcompexec)
+            self.libs = ['gfortran']
+            mveclibroot = self.findmveclibroot(self.fcompexec)
+            if mveclibroot:
+                self.libdirs.append(mveclibroot)
+                self.libs.append('mvec')
+            self.fopt = '-O3 -ftree-vectorize -ftree-vectorizer-verbose=0'
+            if self.omp:
+                self.fopt += ' -fopenmp'
+            return 1    
 
     def linux_pg(self):
         if self.usecompiler('pg', 'pgf90'):
